@@ -2,9 +2,13 @@
 // This header MUST be included in file containing main()
 #include <allegro5/allegro.h>
 
+const float FPS = 60;
+
 int main(int argc, char **argv) {
     ALLEGRO_DISPLAY *display = NULL;
     ALLEGRO_EVENT_QUEUE *event_queue = NULL;
+    ALLEGRO_TIMER *timer = NULL;
+    bool redraw = true;
 
     // Initialize Allegro Library
     if(!al_init()) {
@@ -12,10 +16,18 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    // set timer tick rate in seconds
+    timer = al_create_timer(1.0 / FPS);
+    if (!timer) {
+        fprintf(stderr, "failed to create timer!\n");
+        return -1;
+    }
+
     // Create display with specified width and height
     display = al_create_display(640, 480);
     if(!display) {
         fprintf(stderr, "failed to create display!\n");
+        al_destroy_timer(timer);
         return -1;
     }
 
@@ -25,12 +37,15 @@ int main(int argc, char **argv) {
     event_queue = al_create_event_queue();
     if (!event_queue) {
         fprintf(stderr, "failed to create event_queue!\n");
+        al_destroy_timer(timer);
         al_destroy_display(display);
         return -1;
     }
 
     // Tie display events to our created event queue, such as the buttons in the window bar (minimize, close)
     al_register_event_source(event_queue, al_get_display_event_source(display));
+    // Add timer events to event queue
+    al_register_event_source(event_queue, al_get_timer_event_source(timer));
 
     // Create RGB color and and clear display to RGB color
     al_clear_to_color(al_map_rgb(0,0,0));
@@ -39,25 +54,33 @@ int main(int argc, char **argv) {
     // Now we flip the displays so the drawn display is visible
     al_flip_display();
 
+    al_start_timer(timer);
+
     while (1) {
         ALLEGRO_EVENT ev;
-        // create timeout of 60 ms
-        ALLEGRO_TIMEOUT timeout;
-        al_init_timeout(&timeout, 0.06);
+        // Since the timer adds regular events coming in a timeout is not needed
+        al_wait_for_event(event_queue, &ev);
 
-        // wait until event arrives or timeout has elapsed
-        bool get_event = al_wait_for_event_until(event_queue, &ev, &timeout);
-
+        // redraw the screen, game logic would be placed here
+        if (ev.type == ALLEGRO_EVENT_TIMER) {
+            redraw = true;
+        }
         // if we have an event, and it corresponds to a close event, break the loop and exit
-        if (get_event && ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
+        else if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
             break;
         }
 
-        al_clear_to_color(al_map_rgb(0, 0, 0));
-        al_flip_display();
+        // A test that the event queue is empty is needed in case the queue falls behind (lag)
+        // Lagging events are skipped over to empty the queue
+        if (redraw && al_is_event_queue_empty(event_queue)) {
+            redraw = false;
+            al_clear_to_color(al_map_rgb(0, 0, 0));
+            al_flip_display();
+        }
     }
 
-    // Free memory associated with display
+    // Free memory associated with timer, display, event_queue
+    al_destroy_timer(timer);
     al_destroy_display(display);
     al_destroy_event_queue(event_queue);
 
